@@ -1,0 +1,43 @@
+---
+title: "Scrape NFL 2021 Schedule"
+author: "Max Hübner"
+date: "8/16/2021"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(rvest)
+```
+
+```{r}
+espn_grid <- read_html("http://www.espn.com/nfl/schedulegrid")
+```
+
+```{r}
+nfl_2021_matchups <- espn_grid %>% 
+  html_table() %>% 
+  . [[1]] %>% 
+  filter(row_number() > 2) %>% 
+  rename(team_1 = 1) %>% 
+  pivot_longer(cols = X2:X19, names_to = "week", values_to = "team_2") %>% 
+  filter(team_1 != "BYE", team_2 != "BYE") %>% 
+  mutate(week = parse_number(week) - 1,
+         home = ifelse(str_detect(team_2, "@"), str_remove(team_2, "@"), team_1),
+         away = ifelse(str_detect(team_2, "@"), team_1, team_2)) %>% 
+  distinct(week, home,away)
+```
+
+```{r}
+nfl_2021_matchups_ordered <- nfl_2021_matchups %>% 
+  mutate(sortteam = ifelse(home < away, home, away)) %>% 
+  arrange(sortteam) %>% 
+  select(-sortteam)
+```
+
+```{r}
+nfl_2021_matchups_ordered %>% 
+  mutate(winner = 1)%>%
+  write_csv("data/nfl-2021-tippspiel.csv")
+```
+

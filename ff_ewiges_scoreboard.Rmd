@@ -1,0 +1,88 @@
+---
+title: "Fantasy Football - Ewiges Scoreboard"
+author: "Max Hübner"
+date: "8/13/2021"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(hubnR)
+
+theme_set(theme_hubnr())
+```
+
+```{r}
+ff_hist_raw <- read_csv("data/ff-history-2017-2021.csv")
+
+ff_matches <- ff_hist_raw %>% 
+  distinct(year,week,team,team_away, .keep_all = T) %>% 
+  select(-(pos:points)) %>% 
+  mutate(team_winner = ifelse(team_score >= team_away_score, team, team_away),
+         manager_winner = ifelse(team_score >= team_away_score, team_manager, team_away_manager),
+         team_loser = ifelse(team_score < team_away_score, team, team_away),
+         manager_loser = ifelse(team_score < team_away_score, team_manager, team_away_manager),
+         score_winner = ifelse(team_score > team_away_score, team_score, team_away_score),
+         score_loser = ifelse(team_score < team_away_score, team_score, team_away_score)) %>% 
+  distinct(year,week,team_winner,team_loser, .keep_all = T) %>% 
+  select
+
+write_csv(ff_matches, "data/ff-matches-2017-2021.csv")
+```
+
+```{r}
+owner_of_interest <- c("Hubner", "Bauer", "Ha", "Tobsenheimi", "Hagen", "Markus", "Patrick", "Speasy", "Stumpf", "Marc")
+
+ff_manager_matchups <- ff_matches %>% 
+  group_by(manager_winner) %>% 
+  count(manager_loser, sort = T)
+
+write_csv(ff_manager_matchups, "data/ff_manager_matchups-2017-2021.csv")
+
+ff_scoreboard <- crossing(home = owner_of_interest, away = owner_of_interest) %>% 
+  left_join(ff_manager_matchups, by = c("home" = "manager_loser", "away" = "manager_winner")) %>%
+  left_join(ff_manager_matchups, by = c("home" = "manager_winner", "away" = "manager_loser")) %>% 
+  rename(win = n.x, loss = n.y) %>% 
+  replace_na(list(win = 0, loss = 0)) %>% 
+  mutate(n = win + loss,
+         color_code = case_when(
+           n == 0 ~ "#B0B0B0",
+           win == loss ~ "#FFFF99",
+           win > loss ~ "#90ee90",
+           win < loss ~ "#ffcccb",
+           TRUE ~ "#FFFFFF"
+         ),
+         home = as.factor(home),
+         away = as.factor(away),
+         score_string = glue::glue("{win} - {loss}"),
+         home = recode(home, "Tobsenheimi" = "Heim"),
+         away = recode(away, "Tobsenheimi" = "Heim")
+         )
+```
+
+```{r}
+plot_scoreboard <- ff_scoreboard %>% 
+  ggplot(aes(home,
+             away,
+             fill = color_code,
+             label = score_string) ) +
+  geom_tile() +
+  geom_text(family = "Roboto", fontface = "bold") +
+  scale_fill_identity() + 
+  scale_x_discrete(limits = rev(levels(ff_scoreboard$home))) +
+  theme_hubnr() + 
+  labs(title = "Das ewige Scoreboard | 2017-2020 | Incl. Playoffs",
+       x = "Away-Team",
+       y = "Home-Team") + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+plot_scoreboard
+
+save_std_png(plot_scoreboard, "output/ewiges_scoreboard-2020.png", width = 10, height = 7.5)
+```
+
+```{r}
+
+```
+
+

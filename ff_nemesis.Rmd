@@ -1,0 +1,179 @@
+---
+title: "FF Nemesis Player"
+author: "Max Hübner"
+date: "8/13/2021"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(hubnR)
+
+library(gt)
+
+theme_set(theme_hubnr())
+
+owner_of_interest <- c("Hubner", "Bauer", "Ha", "Tobsenheimi", "Markus", "Patrick", "Speasy", "Stumpf", "Marc")
+```
+
+```{r}
+ff_hist_raw <- read_csv("data/ff-history-2017-2021.csv")
+
+ff_hist <- ff_hist_raw %>%
+  filter(pos != "BN",
+         team_away_manager %in% owner_of_interest)
+```
+
+```{r}
+ff_nemesis <- ff_hist %>% 
+  group_by(team_away_manager, player) %>% 
+  summarise(total_points = sum(points),
+            n = n(),
+            pos = pos) %>% 
+  arrange(-total_points) %>% 
+  group_by(team_away_manager, pos) %>% 
+  group_modify(~ head(.x, 1)) %>% 
+  arrange(-total_points) %>% 
+  ungroup() %>% 
+  filter(!pos %in% c("FLEX", "DEF", "K"))
+```
+
+```{r}
+table_nemesis <- ff_nemesis %>% 
+  gt(groupname_col = "team_away_manager") %>% 
+  tab_options(
+    row_group.background.color = "#EFFBFC",#EFFBFC
+    heading.background.color = "#ebebeb",
+    column_labels.background.color = "#ebebeb",
+    stub.background.color = "#ebebeb",
+    table.font.color = "#323232",
+    table_body.hlines.color = "#989898",
+    table_body.border.top.color = "#989898",
+    heading.border.bottom.color = "#989898",
+    row_group.border.top.color = "#989898",
+    row_group.border.bottom.style = "none",
+    stub.border.style = "dashed",
+    stub.border.color = "#989898",
+    stub.border.width = "1px",
+    table.width = "60%"
+  ) %>% 
+  tab_header(
+    title = md("Wer ist euer Nemesis?"),
+    subtitle = "(Spieler, die gegen euch am meisten Punkte erzielt haben)"
+  ) %>% 
+  data_color(
+    columns = c(total_points),
+    colors = scales::col_numeric(
+      palette = paletteer::paletteer_d(
+        palette = "ggsci::green_material"
+      ) %>% as.character(),
+      domain = NULL
+    ),
+    alpha = 0.8
+  ) %>% 
+  opt_all_caps() %>% 
+  cols_align(align = "center", columns = c(2,5)) %>% 
+  cols_align(align = "center", columns = c(4)) %>% 
+  cols_label(
+    pos = md("Position"),
+    total_points = md("Punkte"),
+    n = md("Einsätze")
+  )
+
+gtsave(table_nemesis , "output/nemesis-table-2020.html")
+```
+
+```{r}
+ff_nemesis %>% 
+  mutate(pos = as.factor(pos),
+         player = ifelse(team_away_manager == "Bauer" & pos == "RB" , str_glue("{player}\n(in {n} Spielen)"), str_glue("{player} ({n})"))) %>% 
+  mutate(player = tidytext::reorder_within(player, total_points, team_away_manager)) %>% 
+  ggplot(aes(total_points, player, fill = pos)) + 
+  scale_fill_manual(values = c("#C05D84", "#73C2A5", "#CC8C4A", "#45A1CA")) +
+  geom_col() +
+  facet_wrap(~team_away_manager, scales = "free_y") +
+  tidytext::scale_y_reordered() +
+  labs(title = "Wer ist euer Nemesis?",
+       subtitle =  "Spieler, die gegen euch pro Position die meisten Punkte gescored haben",
+       x = NULL,
+       y = NULL,
+       fill = "Position"
+       ) +
+  theme(
+    strip.background.x = element_blank(),
+    strip.text.x = element_text(family = "Roboto", size = 13)
+  )
+
+save_std_png(plot_nemesis, "output/nemesis-2020.png", width = 14, height = 10)
+```
+
+```{r}
+ff_nemesis_norm <- ff_hist %>% 
+  group_by(team_away_manager, player) %>% 
+  summarise(avg_points = mean(points),
+            n = n(),
+            pos = pos) %>%
+  filter(n >= 3) %>%
+  arrange(-avg_points) %>% 
+  group_by(team_away_manager, pos) %>% 
+  group_modify(~ head(.x, 1)) %>% 
+  arrange(-avg_points) %>% 
+  ungroup() %>% 
+  filter(!pos %in% c("FLEX", "DEF", "K"))
+
+ff_nemesis_norm %>% 
+  mutate(pos = as.factor(pos)) %>% 
+  mutate(player = tidytext::reorder_within(player, avg_points, team_away_manager)) %>% 
+  ggplot(aes(avg_points, player, fill = pos)) + 
+  scale_fill_manual(values = c("#C05D84", "#73C2A5", "#CC8C4A", "#45A1CA")) +
+  geom_col() +
+  facet_wrap(~team_away_manager, scales = "free_y") +
+  tidytext::scale_y_reordered() +
+  labs(title = "Welche Spieler spielen überdurchschnittlich gegen euch?",
+       x = NULL,
+       y = NULL,
+       fill = "Position"
+       ) +
+  theme(
+    strip.background.x = element_blank(),
+    strip.text.x = element_text(family = "Roboto", size = 13)
+  )
+```
+
+
+```{r}
+ff_ohw <- ff_hist %>% 
+  group_by(team_away_manager, player) %>%  
+  arrange(-points) %>% 
+  group_by(team_away_manager, pos) %>% 
+  group_modify(~ head(.x, 1)) %>% 
+  arrange(-points) %>% 
+  ungroup() %>% 
+  filter(!pos %in% c("DEF", "K"))
+
+ff_ohw %>% 
+  mutate(pos = as.factor(pos),
+         player = str_glue("{player}\n({year}-{week})")) %>% 
+  mutate(player = tidytext::reorder_within(player, points, team_away_manager)) %>% 
+  ggplot(aes(points, player, fill = pos)) + 
+  scale_fill_manual(values = c("grey", "#C05D84", "#73C2A5", "#CC8C4A", "#45A1CA")) +
+  geom_col() +
+  facet_wrap(~team_away_manager, scales = "free_y") +
+  tidytext::scale_y_reordered() +
+  labs(title = "One Hit Wonder - Welche Spieler haben euch zerstört wie kein anderer?",
+       subtitle =  "(Jahr - Woche)",
+       x = NULL,
+       y = NULL,
+       fill = "Position"
+       ) +
+  theme(
+    strip.background.x = element_blank(),
+    strip.text.x = element_text(family = "Roboto", size = 13)
+  )
+
+#save_std_png(plot_nemesis, "output/nemesis-2020.png", width = 14, height = 10)
+```
+```
+
+
+

@@ -1,0 +1,157 @@
+---
+title: "Untitled"
+author: "Max Hübner"
+date: "11/29/2021"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(gt)
+library(gtExtras)
+library(tidyverse)
+library(hubnR)
+```
+
+```{r}
+ff_history <- read_csv("data/ff-history-2017-2021.csv")
+ff_matches <- read_csv("data/ff-matches-2017-2021.csv")
+```
+
+```{r}
+ff_history %>% 
+  filter(year == 2020, team_manager == "Bauer") %>% 
+  filter(week < 14) %>% 
+  distinct(year, team_manager, team_away_manager, week) %>% 
+  count(year, team_manager, team_away_manager, sort = T)
+
+# 2018
+# Div 1 - Bauer, Andi, Simon, Stumpf, Tobsenheimi
+# Div 2 - Hagen, Hubner, Markus. Partick, Walter
+
+# 2019
+# Div 1 - Ha, Hubner, Bauer, Markus, Stumpf
+# Div 2 - Hagen, Malte, Patrick, Speasy, Tobsenheimi
+
+# 2020
+# Div 1 - Bauer, Ha. Hubner, Patrick, Speasy
+# Div 2 - Marc, Hagen, Markus, Stumpf, Tobsenheimi
+```
+
+```{r}
+div_tibble <- tribble(
+  ~year, ~team_manager, ~division,
+  2018, "Bauer", "Div 1",
+  2018, "Andi", "Div 1",
+  2018, "Simon", "Div 1",
+  2018, "Stumpf", "Div 1",
+  2018, "Tobsenheimi", "Div 1",
+  2018, "Hagen", "Div 2",
+  2018, "Hubner", "Div 2",
+  2018, "Markus", "Div 2",
+  2018, "Patrick", "Div 2",
+  2018, "Walter", "Div 2",
+  2019, "Bauer", "Div 1",
+  2019, "Ha", "Div 1",
+  2019, "Hubner", "Div 1",
+  2019, "Markus", "Div 1",
+  2019, "Stumpf", "Div 1",
+  2019, "Hagen", "Div 2",
+  2019, "Malte", "Div 2",
+  2019, "Patrick", "Div 2",
+  2019, "Speasy", "Div 2",
+  2019, "Tobsenheimi", "Div 2",
+  2020, "Bauer", "Div 1",
+  2020, "Ha", "Div 1",
+  2020, "Hubner", "Div 1",
+  2020, "Patrick", "Div 1",
+  2020, "Speasy", "Div 1",
+  2020, "Hagen", "Div 2",
+  2020, "Stumpf", "Div 2",
+  2020, "Markus", "Div 2",
+  2020, "Marc", "Div 2",
+  2020, "Tobsenheimi", "Div 2"
+)
+```
+
+```{r}
+ff_div_data <- ff_history %>% 
+  filter(year > 2017, week <=13) %>% 
+  left_join(div_tibble, by = c("year", "team_manager")) %>% 
+  left_join(div_tibble %>% rename(division_away = division), by = c("year", "team_away_manager" = "team_manager")) %>% 
+  mutate(result = ifelse(team_score > team_away_score, "W", "L")) %>% 
+  distinct(year, week, team_manager, division, team_score, team_away_manager, team_away_score, division_away, result)
+```
+
+```{r}
+calc_div <- . %>% 
+  count(year, division, result) %>% 
+  left_join(div_tibble, by = c("year", "division")) %>% 
+  nest(data = team_manager) %>% 
+  unnest_wider(data) %>% 
+  unnest_wider(team_manager) %>% 
+  rename(p1 = 5,p2 = 6,p3 = 7,p4 = 8,p5 = 9) %>% 
+  pivot_wider(names_from = result, values_from = n)
+
+div_wins <- ff_div_data %>% 
+  calc_div()
+
+div_wins_cross <- ff_div_data %>% 
+  filter(division != division_away) %>% 
+  calc_div()
+
+div_wins_cross %>%
+  group_by(year) %>% 
+  relocate(W, .before = L) %>%
+  mutate("%" = W/(W+L)) %>% 
+  gt() %>% 
+  gt_theme_538() %>% 
+  fmt_percent(columns = "%") %>% 
+  tab_spanner(
+    label = "Players in Division",
+    columns = 3:7
+  ) %>% 
+  tab_header("Wie stark waren die einzelnen Divisons?", subtitle = "Win-Loss Record der einzelnen Divisionen bei Spielen gegen die andere Division") %>% 
+  opt_align_table_header(align = "center") %>% 
+  gt_hulk_col_numeric("%") %>% 
+  gtsave("output/tab_div.html")
+
+```
+
+```{r}
+ff_history %>% 
+  filter(year == 2018) %>% 
+  left_join(div_tibble, by = c("year", "team_manager")) %>% 
+  left_join(div_tibble %>% rename(division_away = division),
+            by = c("year", "team_away_manager" = "team_manager")) %>% 
+  mutate(result = ifelse(team_score > team_away_score, "W", "L")) %>% 
+  distinct(year, week, team_manager, division, team_score, team_away_manager, team_away_score, division_away, result) %>% 
+  group_by(year, team_manager) %>% 
+  mutate(result_int = ifelse(result == "W", 1, 0)) %>%
+  summarise(div = first(division),
+            W = sum(result_int),
+            L = sum(!result_int),
+            per = W/16,
+            result_list = list(result_int)) %>% 
+  ungroup() %>% 
+  select(-year) %>% 
+  arrange(desc(per)) %>% 
+  gt() %>% 
+  gt_plt_winloss(result_list, max_wins = 16) %>% 
+  fmt_percent(per) %>% 
+  gt_theme_espn() %>% 
+  tab_header("Fantasy Season 2018",
+             subtitle = "Tobi Heim verliert nur eins der letzten elf Spiele und wird Champ") %>% 
+  cols_label(team_manager = "Manager",
+             div = "Divison",
+             W = "wins",
+             L = "Loss",
+             per = "Win%",
+             result_list = "") %>% 
+  opt_align_table_header(align = "center")
+```
+
+
+

@@ -1,0 +1,84 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+sleeper_history_raw <- read_csv("data/sleeper-history.csv") %>% 
+  select(-stats, team_score = total_score)
+nfl_history_raw <- read_csv("data/fantasy-history-matchup.csv") %>% 
+  select(-stats, -(total_bench:streak),-(total_bench_away:streak_away),-game_id,team_score = total_score, team_away_score = total_score_away)
+```
+
+```{r}
+ff_history_cleaned <- nfl_history_raw %>% 
+  bind_rows(sleeper_history_raw) %>% 
+  replace_na(list(opp = "BYE", status = "BYE")) %>%
+  mutate(pos = recode(pos,
+                      "W/R" = "FLEX",
+                      "R/W/T" = "FLEX",
+                      "FLX" = "FLEX",
+                      ),
+         opp = str_replace_all(opp,c("@ " = "@", "vs " = "")),
+         opp = str_replace(opp,"LA$", "LAR"),
+         opp = toupper(opp),
+         status = str_replace(status, "[a-z]+,", ""),
+         player = str_remove(player, "[:blank:][A-Z]+[:blank:]-[:blank:][A-Z]+$")
+         )
+```
+
+```{r}
+ff_history_cleaned %>% distinct(team) %>% pull(team)
+
+team_owner_dict <- tribble(
+  ~team, ~owner,
+  "Le'Veon A Prayer", "Hubner",
+  "Kung Suh Panda", "Tobsenheimi",
+  "Rui's Crew", "Patrick",
+  "Suit Up", "Files",
+  "Leschke-Ultras", "Walter",
+  "Die EXperten", "Markus",
+  "Goldcity", "Hagen",
+  "The Manning Faced God", "Bauer",
+  "Unlimited Power", "Hubner",
+  "DJ-CMC", "Tobsenheimi",
+  "Frodo's Homos", "Bauer",
+  "RoadToGlory", "Andi",
+  "Master of Disaster", "Stumpf",
+  "mod s0beit", "Simon",
+  "Angst Potter", "Hubner",
+  "Big Dick Nick", "Tobsenheimi",
+  "N'Keal and the Hyde B Fitz", "Ha",
+  "I dont feel so good", "Bauer",
+  "White Broncos", "Malte",
+  "Sportfreunde Speasy", "Speasy",
+  "Hubner", "Hubner",
+  "Blitzkoerper85", "Tobsenheimi",
+  "AllTimeReadyPat", "Patrick",
+  "MarkusEXperte", "Markus",
+  "seb44", "Hagen",
+  "TheRealBauer", "Bauer",
+  "Speasy", "Speasy",
+  "Hammichan", "Ha",
+  "StumpfistTrumpf", "Stumpf",
+  "MKx", "Marc"
+)
+
+ff_history <- ff_history_cleaned %>% 
+  left_join(team_owner_dict, by="team") %>% 
+  left_join(team_owner_dict, by=c("team_away" = "team")) %>%
+  rename(team_manager = owner.x, team_away_manager = owner.y)
+```
+
+
+```{r}
+ff_history %>% write_csv("data/ff-history-2017-2021.csv")
+```
+
+

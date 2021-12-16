@@ -1,0 +1,124 @@
+---
+title: "NFL Fantasy Calculation"
+author: "Max Hübner"
+date: "8/20/2021"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+#pbp_20 <- read_rds("https://github.com/nflverse/nflfastR-data/raw/master/data/play_by_play_2020.rds")
+
+pbp_20 <- read_rds("data/play_by_play_2020.rds") %>% 
+  select(-contains("epa"), -contains("wpa"), -contains("_prob"), -contains("_wp"), -contains("lateral"), -contains("punt"), -contains("tackle_"), -contains("sack_")) %>% 
+  mutate(ff_skill_player = ifelse(is.na(receiver_player_name), rusher_player_name, receiver_player_name),
+         ff_skill_player_id = ifelse(is.na(receiver_player_id), rusher_player_id, receiver_player_id))
+
+pbp_20
+```
+
+
+```{r}
+pbp_20 %>% 
+  filter(!is.na(receiver_player_name),!is.na(rusher_player_name))
+```
+
+```{r}
+calc_sp <- . %>% mutate(ff_yards = ifelse(two_point_attempt, 0, yards_gained / 10),
+         ff_rec = ifelse(complete_pass, .5, 0),
+         ff_td = ifelse(touchdown & !(interception | fumble_lost), 6, 0),
+         ff_fum = ifelse(fumble & fumble_lost, -3, 0),
+         ff_fum = ifelse(fumble & !fumble_lost, ff_fum - 1, ff_fum),
+         ff_spec = ifelse(!is.na(two_point_conv_result) & two_point_conv_result == "success", 2, 0)
+         )
+
+summ_sp <- . %>% 
+  summarise(ff = sum(ff_yards + ff_rec + ff_td + ff_fum + ff_spec),
+            ff_yards = sum(ff_yards),
+            ff_rec = sum(ff_rec),
+            ff_td = sum(ff_td),
+            ff_fum = sum(ff_fum),
+            ff_spec = sum(ff_spec, na.rm = T)
+            )
+
+calc_qb <- . %>% mutate(ff_yards = ifelse(two_point_attempt, 0, yards_gained / 25),
+         ff_rec = 0,
+         ff_td = ifelse(touchdown & !(interception | fumble_lost), 4, 0),
+         ff_fum = ifelse(fumble & fumble_lost, -3, 0),
+         ff_fum = ifelse(fumble & !fumble_lost, ff_fum - 1, ff_fum),
+         ff_spec = ifelse(!is.na(two_point_conv_result) & two_point_conv_result == "success", 2, 0)
+         )
+```
+
+```{r}
+ff_20 <- pbp_20 %>% 
+  group_by(game_id, ff_skill_player_id, ff_skill_player) %>% 
+  calc_sp() %>% 
+  summ_sp()
+
+ff_20 %>% filter(ff_skill_player == "J.Allen")
+
+pbp_20 %>% 
+  filter(!is.na(passer_player_id)) %>% 
+  group_by(game_id, passer_player_id, passer_player_name) %>% 
+  calc_qb() %>% 
+  summ_sp() %>% View()
+```
+
+
+```{r}
+pp
+
+pbp_20 %>%  filter(ff_skill_player_id == "00-0033045", game_id == "2020_05_NYG_DAL") %>% select(desc, interception, fumble_lost)
+# 00-0033045 zeke
+#00-0030564 
+pbp_20 %>% 
+  filter(game_id == "2020_04_CLE_DAL",
+         ff_skill_player_id == "00-0033045") %>%
+  calc_wr() %>% 
+  select(desc, ff_yards , ff_rec , ff_td , ff_fum , ff_spec) %>% View()
+  
+pbp_20 %>% 
+  filter(ff_skill_player_id == "00-0030564") %>% 
+  group_by(game_id) %>% 
+  calc_wr() %>%
+  summarise(ff = sum(ff_yards + ff_rec + ff_td + ff_fum + ff_spec),
+            ff_yards = sum(ff_yards),
+            ff_rec = sum(ff_rec),
+            ff_td = sum(ff_td),
+            ff_fum = sum(ff_fum),
+            ff_spec = sum(ff_spec, na.rm = T)
+            )
+
+pbp_20 %>% 
+  filter(ff_skill_player_id == "00-0033045") %>% 
+  group_by(game_id) %>% 
+  calc_wr() %>% 
+  summarise(ff = sum(ff_yards + ff_rec + ff_td + ff_fum + ff_spec),
+            ff_yards = sum(ff_yards),
+            ff_rec = sum(ff_rec),
+            ff_td = sum(ff_td),
+            ff_fum = sum(ff_fum),
+            ff_spec = sum(ff_spec, na.rm = T)
+            )
+
+pbp_20 %>% 
+  filter(ff_skill_player_id == "00-0030564") %>% 
+  group_by(game_id) %>% 
+  calc_wr() %>%
+  summarise(ff = sum(ff_yards + ff_rec + ff_td + ff_fum),
+            ff_yards = sum(ff_yards),
+            ff_rec = sum(ff_rec),
+            ff_td = sum(ff_td),
+            ff_fum = sum(ff_fum)
+            )
+```
+
+```{r}
+colnames(pbp_20)
+```
+

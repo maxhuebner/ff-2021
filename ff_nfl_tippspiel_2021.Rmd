@@ -1,0 +1,81 @@
+---
+title: "NFL Tippspiel"
+author: "Max Hübner"
+date: "8/16/2021"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(teamcolors)
+```
+
+```{r}
+team_abbr <- tribble(
+  ~name, ~team_code, ~division,
+  "Arizona Cardinals", "ARI", "NFC WEST",
+  "Atlanta Falcons","ATL", "NFC SOUTH",
+  "Baltimore Ravens","BAL", "AFC NORTH",
+  "Buffalo Bills","BUF", "AFC EAST",
+  "Carolina Panthers","CAR","NFC SOUTH",
+  "Chicago Bears","CHI", "NFC NORTH",
+  "Cincinnati Bengals","CIN", "AFC NORTH",
+  "Cleveland Browns","CLE", "AFC NORTH",
+  "Dallas Cowboys","DAL", "NFC EAST",
+  "Denver Broncos","DEN", "AFC WEST",
+  "Detroit Lions","DET", "NFC NORTH",
+  "Green Bay Packers","GB", "NFC NORTH",
+  "Houston Texans","HOU", "AFC SOUTH",
+  "Indianapolis Colts", "IND", "AFC SOUTH",
+  "Jacksonville Jaguars", "JAX", "AFC SOUTH",
+  "Kansas City Chiefs", "KC", "AFC WEST",
+  "Los Angeles Chargers", "LAC", "AFC WEST",
+  "Los Angeles Rams", "LAR", "NFC WEST",
+  "Miami Dolphins", "MIA", "AFC EAST",
+  "Minnesota Vikings", "MIN", "NFC NORTH",
+  "New England Patriots","NE", "AFC EAST",
+  "New Orleans Saints","NO", "NFC SOUTH",
+  "New York Giants","NYG", "NFC EAST",
+  "New York Jets","NYJ", "AFC EAST",
+  "Oakland Raiders", "LV", "AFC WEST",
+  "Philadelphia Eagles", "PHI", "NFC EAST",
+  "Pittsburgh Steelers", "PIT", "AFC NORTH",
+  "San Francisco 49ers", "SF", "NFC WEST",
+  "Seattle Seahawks", "SEA", "NFC WEST",
+  "Tampa Bay Buccaneers", "TB", "NFC SOUTH",
+  "Tennessee Titans", "TEN", "AFC SOUTH",
+  "Washington Football Team", "WAS", "NFC EAST"
+)
+
+teamcols <- filter(teamcolors, league == "nfl") %>% 
+  left_join(team_abbr, by = "name") %>%
+  select(win = team_code, name, primary, secondary, logo, division = division.x) %>% 
+  replace_na(list(win = "WSH"))
+```
+
+```{r}
+calc_winnings <- .%>% 
+  mutate(win = ifelse(winner == 1, home, away)) %>% 
+  count(win, sort = T) %>% 
+  left_join(teamcols, by = "win") %>% 
+  rename(wins = n, team = win) %>% 
+  mutate(losses = 17-wins,
+         score = glue::glue("{wins}-{losses}")) %>% 
+  relocate(losses, score, .before = "name")
+```
+
+```{r}
+filenames <- list.files("data/Tippspiel/", pattern="*.csv", full.names=TRUE)
+df_tipps <- lapply(filenames, read_csv)
+
+df_wins <- lapply(df_tipps, calc_winnings)
+names(df_wins) <- str_trim(str_sub(str_extract(filenames, "[a-zA-Z]+.csv"), end = -5))
+df_wins
+```
+
+```{r}
+df_wins$hubner %>% write_csv("data/Tippspiel/wins/nfl-2021-wins-hubner.csv")
+df_wins$bauer %>% write_csv("data/Tippspiel/wins/nfl-2021-wins-bauer.csv")
+```
+
+

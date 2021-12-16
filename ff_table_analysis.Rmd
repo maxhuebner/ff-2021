@@ -1,0 +1,202 @@
+---
+title: "Untitled"
+author: "Max Hübner"
+date: "11/29/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(gt)
+library(gtExtras)
+library(tidyverse)
+library(hubnR)
+```
+
+```{r}
+ff_history <- read_csv("data/ff-history-2017-2021.csv")
+ff_matches <- read_csv("data/ff-matches-2017-2021.csv")
+```
+
+
+
+```{r}
+ff_history %>% 
+  filter(team_manager %in% motw & team_away_manager %in% motw,
+         pos != "BN") %>%
+  filter(year == 2019, week == 7,
+         team == "I dont feel so good") %>% 
+  select(pos:points) %>% 
+  gt() %>% 
+  gt_theme_538() %>% 
+  tab_header(md("Fantasy Roster - **Bauer**  
+                2019, Week 7"))
+
+tab_bestpos <- ff_history %>% 
+  group_by(pos) %>% 
+  arrange(desc(points)) %>% 
+  group_modify(~ head(.x, 4L)) %>% 
+  select(year, week, pos, player, points, manager = team_manager, "vs." = team_away_manager) %>% 
+  gt() %>% 
+  gt_theme_538() %>% 
+  tab_header(md("Die Bestleistungen unserer Fantasy Geschichte pro Position (2017-2020)"))
+
+tab_best <- ff_history %>% 
+  arrange(desc(points)) %>% 
+  head(15) %>% 
+  select(year, week, pos, player, points, manager = team_manager, "vs." = team_away_manager) %>% 
+  gt() %>% 
+  gt_theme_espn() %>% 
+  tab_header(md("Die 15 Bestleistungen unserer Fantasy Geschichte (2017-2020)"))
+
+gtsave(tab_best, "output/tab_best.html")
+gtsave(tab_bestpos, "output/tab_bestpos.html")
+
+owner_of_interest <- c("Hubner", "Bauer", "Ha", "Tobsenheimi", "Markus", "Patrick", "Speasy", "Stumpf", "Marc")
+
+tab_kassiert <- ff_history %>% 
+  arrange(desc(points)) %>% 
+  filter(points >= 30, team_away_manager %in% owner_of_interest) %>% 
+  count(team_away_manager, sort = T) %>% 
+  select(manager = 1, anzahl = 2)  %>% 
+  gt() %>% 
+  gt_theme_538() %>% 
+  tab_header(md("Spieler mit 30+ Punkten im Gegnerteam (seit 2017)")) %>% 
+  cols_width(
+    manager ~ px(100)
+  )
+
+gtsave(tab_kassiert, "output/tab_kassiert.html")
+
+tab_trashpos <- ff_history %>% 
+  filter(points > 0, !pos %in% c("DEF", "BN", "K")) %>% 
+  group_by(pos) %>% 
+  arrange(points) %>% 
+  group_modify(~ head(.x, 4L)) %>% 
+  select(year, week, pos, player, points, manager = team_manager, "vs." = team_away_manager) %>% 
+  gt() %>% 
+  gt_theme_538() %>% 
+  tab_header(md("Trash Leistungen unserer Fantasy Geschichte pro Position (2017-2020)"))
+
+gtsave(tab_trashpos, "output/tab_trashpos.html")
+
+
+tab_worst_manager <- ff_history %>% 
+  distinct(year,week, manager = team_manager, score = team_score) %>% 
+  group_by(year) %>% 
+  arrange(score)  %>% 
+  group_modify(~ head(.x, 5L)) %>% 
+  gt() %>% 
+  gt_theme_538() %>% 
+  tab_header(md("Die schlechtesten Leistungen unserer  
+                Fantasy Geschichte")) %>% 
+  opt_align_table_header(align = "center")
+
+tab_worstactive <- ff_history %>% 
+  filter(team_manager %in% owner_of_interest) %>% 
+  distinct(year,week, manager = team_manager, score = team_score) %>% 
+  arrange(score) %>% 
+  head(10) %>% 
+  gt() %>% 
+  gt_theme_538() %>% 
+  tab_header(md("Die 10 schlechtesten Leistungen der  
+                noch aktiven Spieler bis 2020")) %>% 
+  opt_align_table_header(align = "center")
+
+gtsave(tab_worst_manager, "output/tab_worstmanager.html")
+gtsave(tab_worstactive, "output/tab_worstactive.html")
+
+ff_history %>% 
+  filter(team_manager %in% owner_of_interest) %>% 
+  distinct(year,week, manager = team_manager, score = team_score) %>% 
+  arrange(score) %>% 
+  group_by(manager) %>% 
+  group_modify(~ head(.x, 1L)) %>% 
+  arrange(score) %>% 
+  ungroup() %>% 
+  gt() %>% 
+  tab_header(md("Die 10 schlechtesten Leistungen der  
+                noch aktiven Spieler bis 2020")) %>% 
+  opt_align_table_header(align = "center")
+
+tab_rui <- ff_history %>% 
+  filter(team_manager == "Patrick", year == 2017) %>% 
+  distinct(year,week, manager = team_manager, score = team_score, team_away_manager, team_away_score) %>% 
+  mutate(result = ifelse(score > team_away_score, "W", "L")) %>% 
+  select(week, vs = team_away_manager, score, "Score vs." = team_away_score, result) %>% 
+  gt() %>%
+  gt_theme_538() %>% 
+  tab_header(md("Rui's Meisterleistung")) %>% 
+  opt_align_table_header(align = "center") %>% 
+  cols_align(align = "center", columns = "result")
+
+tab_heim <- ff_history %>% 
+  filter(team_manager == "Tobsenheimi", year == 2018) %>% 
+  distinct(year,week, manager = team_manager, score = team_score, team_away_manager, team_away_score) %>% 
+  mutate(result = ifelse(score > team_away_score, "W", "L")) %>% 
+  select(week, vs = team_away_manager, score, "Score vs." = team_away_score, result) %>% 
+  gt() %>%
+  gt_theme_538() %>% 
+  tab_header(md("Heim's Meisterleistung")) %>% 
+  opt_align_table_header(align = "center") %>% 
+  cols_align(align = "center", columns = "result") %>% 
+  gtExtras::gt_highlight_rows(rows = 15, fill = "lightgreen")
+
+gtsave(tab_heim, "output/tab_heim.html")
+
+tab_hubner <- ff_history %>% 
+  filter(team_manager == "Hubner", year == 2019) %>% 
+  distinct(year,week, manager = team_manager, score = team_score, team_away_manager, team_away_score) %>% 
+  mutate(result = ifelse(score > team_away_score, "W", "L")) %>% 
+  select(week, vs = team_away_manager, score, "Score vs." = team_away_score, result) %>% 
+  gt() %>%
+  gt_theme_538() %>% 
+  tab_header(md("Hubners's Meisterleistung")) %>% 
+  opt_align_table_header(align = "center") %>% 
+  cols_align(align = "center", columns = "result") %>% 
+  gtExtras::gt_highlight_rows(rows = 16, fill = "lightgreen")
+
+gtsave(tab_hubner, "output/tab_hubner.html")
+
+diff_tibble <- ff_history %>% 
+  distinct(year,week, manager = team_manager, score = team_score, team_away_manager, team_away_score) %>% 
+  mutate(win = ifelse(score > team_away_score, "in Siegen", "in Niederlagen"),
+         diff = score - team_away_score) %>% 
+  group_by(year, manager, win) %>% 
+  summarise(diff_med = median(diff),
+            diff_avg = mean(diff),
+            diff_sum = sum(diff)) %>% 
+  arrange(abs(diff_med)) %>% 
+  ungroup()
+
+tab_close <- diff_tibble %>% 
+  filter(manager %in% owner_of_interest) %>% 
+  group_by(win) %>% 
+  select(year,manager, differenz = diff_med, summe = diff_sum) %>% 
+  group_modify(~ head(.x, 5L)) %>% 
+  gt() %>% 
+  gt_theme_538() %>% 
+  tab_header(md("Die knappesten Seasons unserer  
+                Fantasy Geschichte")) %>% 
+  opt_align_table_header(align = "center")
+    
+gtsave(tab_close, "output/tab_close.html")
+
+
+ff_history %>% 
+  filter(team_manager %in% owner_of_interest,pos != "BN") %>%
+  select(pos, player, points, year, week, team_manager,
+         team_score, team_away_manager, team_away_score) %>% 
+  mutate(perc = points / team_score) %>%  
+  filter(pos %in% c("DEF", "K")) %>% 
+  group_by(team_manager, year, pos) %>% 
+  summarise(perc_avg = mean(perc), perc_med = median(perc)) %>% 
+  arrange(perc_med)
+
+ff_history %>% 
+  filter(team_manager == "Bauer", year == 2020) %>% filter(pos == "K")
+  
+# 64.1 Points oder weniger um in die Top 15 zu kommen
+# 56.8 Für Top 10
+```

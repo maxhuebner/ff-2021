@@ -1,0 +1,90 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(hubnR)
+library(tidytext)
+
+theme_set(theme_hubnr())
+```
+
+```{r}
+ff_matches <- read_csv("data/ff-matches-2017-2021.csv")
+ff_history <- read_csv("data/ff-history-2017-2021.csv")
+```
+
+```{r}
+scores <- ff_history %>% 
+  distinct(year, week, team_manager, score = team_score)
+
+managers <- ff_history %>% distinct(team_manager) %>% pull(team_manager)
+
+crossmatchups <- crossing(p1 = managers, p2 = managers, year = 2017:2020, week = 1:16) %>%
+  filter(p1 != p2) %>% 
+  inner_join(scores, by = c(p1="team_manager","year", "week")) %>% 
+  inner_join(scores, by = c(p2="team_manager","year", "week"), suffix = c("_p1", "_p2"))
+
+cross_tab <- crossmatchups %>% 
+  mutate(p_winner = ifelse(score_p1 > score_p2, p1, p2),
+         p_loser = ifelse(score_p1 < score_p2, p1, p2),
+         matchup = str_glue("{p1} vs. {p2}")) %>% 
+  group_by(matchup,p1,p2,year) %>% 
+  summarise(wins = sum(p1 == p_winner),
+            loss = sum(p1 != p_winner),
+            wl = str_glue("{wins}-{loss}")) %>% 
+  arrange(-wins)
+
+
+ff_manager_matchups <- ff_matches %>% 
+  group_by(year, manager_winner) %>% 
+  count(manager_loser, sort = T)
+
+true_scroes <- crossing(home = managers, away = managers, year = 2017:2020) %>% 
+  left_join(ff_manager_matchups, by = c("home" = "manager_winner", "away" = "manager_loser", "year")) %>%
+  left_join(ff_manager_matchups, by = c("home" = "manager_loser", "away" = "manager_winner", "year")) %>% 
+  rename(win = n.x, loss = n.y) %>% 
+  replace_na(list(win = 0, loss = 0)) %>% 
+  mutate(n = win + loss,
+         home = as.factor(home),
+         away = as.factor(away),
+         score_string = glue::glue("{win}-{loss}")
+         ) %>% 
+  filter(n > 0)
+
+table_data <- cross_tab %>% 
+  left_join(true_scroes, by = c("p1" = "home", "p2" = "away", "year")) %>% 
+  rename(loss = loss.x, true_score = score_string) %>% 
+  select(-win, - loss.y, -n)
+
+```
+
+```{r}
+filt <- "Bauer"
+ff_matches %>% 
+  filter(manager_winner %in% filt | manager_loser %in% filt,
+         year==2018) %>% 
+  mutate(diff = score_winner - score_loser)
+```
+
+
+```{r}
+library(gt)
+library(gtExtras)
+
+table_data %>% 
+  mutate(matchup = str_extract(matchup, "vs.*")) %>% 
+  ungroup() %>% 
+  group_by(p1, year) %>% 
+  arrange(year) %>% 
+  filter(p1 == "Hubner") %>% 
+  select(-p2, -wins, - loss, "Weekly Score" = wl, "True Score" = true_score) %>% 
+  gt() %>% 
+  gt_theme_538() %>% 
+  tab_header(title = "Wenn man jede Woche gegen Person X spielen würde..")
+```
+
