@@ -1,0 +1,113 @@
+---
+title: "Week 6"
+author: "Max Hübner"
+date: "9/19/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(hubnR)
+library(tidytext)
+
+theme_set(theme_hubnr())
+```
+
+```{r}
+ff_matches <- read_csv("data/ff-matches-2017-2021.csv")
+ff_history <- read_csv("data/ff-history-2017-2021.csv")
+```
+
+```{r}
+motw <- c("Bauer", "Patrick")
+```
+
+```{r}
+ff_matches %>% 
+  filter(manager_winner %in% motw & manager_loser %in% motw) %>% 
+  mutate(diff = score_winner - score_loser)
+```
+
+
+```{r}
+ff_history %>% 
+  filter(team_manager %in% motw & team_away_manager %in% motw,
+         pos != "BN") %>% 
+  select(pos:team) %>% 
+  filter(year == 2020) %>% 
+  View()
+```
+
+```{r}
+ff_history %>% 
+  filter(team_manager %in% motw & team_away_manager %in% motw,
+         pos != "BN",
+         year >= 2019) %>% 
+  arrange(points) %>%
+  group_by(pos,team_manager) %>% 
+  summarise(pts = mean(points)) %>% 
+  arrange(pos)
+
+ff_history %>% 
+  filter(team_manager %in% motw & team_away_manager %in% motw,
+         pos == "FLEX") %>% 
+  arrange(points) %>% 
+  select(team_manager, player, pos, points, year, week) %>% 
+  arrange(points)
+```
+
+
+```{r}
+# Loser Picks
+ff_history %>% 
+  filter(team_manager %in% motw & team_away_manager %in% motw,
+         pos != "BN") %>% 
+  arrange(points) %>% 
+  group_by(pos) %>% 
+  group_modify(~ head(.x, 5)) %>%
+  mutate(lbl = str_glue("{player}\n{year}-{week} | {points} Pts."),
+         lbl = reorder_within(lbl, points, pos)) %>% 
+  ggplot(aes(points, lbl, fill = team_manager)) +
+  geom_col() +
+  facet_wrap(~pos, scales = "free") +
+  scale_y_reordered() + 
+  labs(title = "Game Of The Week - Loser Picks",
+       y = "Player Started",
+       x = "Points Scored",
+       fill = "Manager")
+```
+
+```{r}
+# Winner Picks
+ff_history %>% 
+  filter(team_manager %in% motw & team_away_manager %in% motw,
+         pos != "BN") %>% 
+  arrange(-points) %>% 
+  group_by(pos) %>% 
+  group_modify(~ head(.x, 5)) %>%
+  mutate(lbl = str_glue("{player}\n{year}-{week} | {points} Pts."),
+         lbl = reorder_within(lbl, points, pos)) %>% 
+  ggplot(aes(points, lbl, fill = team_manager)) +
+  geom_col() +
+  facet_wrap(~pos, scales = "free") +
+  scale_y_reordered() + 
+  labs(title = "Game Of The Week - Winner Picks",
+       y = "Player Started",
+       x = "Points Scored",
+       fill = "Manager")
+```
+
+```{r}
+ff_history %>% 
+  filter(team_manager %in% motw & team_away_manager %in% motw,
+         pos != "BN") %>% 
+  count(team_manager, player, sort = T)
+```
+
+```{r}
+ff_history %>% 
+  filter(player == "J. Jacobs", year == 2020)
+```

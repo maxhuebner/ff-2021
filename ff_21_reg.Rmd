@@ -1,0 +1,67 @@
+---
+title: "FF 21 Regular Season"
+author: "Max Hübner"
+date: "12/16/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(hubnR)
+
+library(gt)
+library(gtExtras)
+
+theme_set(theme_hubnr())
+```
+
+```{r}
+ff21_reg <- read_csv("data/ff-2021-reg.csv") %>% 
+  mutate(year = recode(year, "2020" = "2021"))
+
+ff21_reg_matches <- ff21_reg %>% 
+  distinct(year, week, team, total_score,
+           total_score_proj, team_away,
+           team_away_proj, team_away_score) %>% 
+  mutate(result = ifelse(total_score >= team_away_score, TRUE, FALSE),
+         result_proj = ifelse(total_score_proj >= team_away_proj, TRUE, FALSE))
+```
+
+```{r}
+ff21_reg_matches %>% 
+  count(team,result, result_proj) %>%
+  filter(result, !result_proj) %>% 
+  arrange(-n)
+```
+
+```{r}
+gt_projscore <- ff21_reg_matches %>% 
+  group_by(year, team) %>% 
+  summarise_if(is.numeric, sum) %>% 
+  ungroup() %>% 
+  select(-week, -year) %>% 
+  arrange(desc(total_score)) %>% 
+  relocate(team_away_score, .after=total_score) %>% 
+  mutate(diff_scored = total_score - total_score_proj,
+         diff_scored_against = team_away_score - team_away_proj) %>% 
+  gt() %>% 
+  gt_theme_espn() %>% 
+  tab_header("Scoring und Vorhersagen: Wer wurde den Projections gerecht?",
+             subtitle = "Vergleich zwischen realen und vorhergesagten Punkten der regular Season 2021") %>% 
+  tab_spanner("Real", columns = 2:3) %>% 
+  tab_spanner("Projected", columns = 4:5) %>% 
+  tab_spanner("Differenz", columns = 6:7) %>% 
+  cols_label(
+    total_score = "Gescored",
+    team_away_score = "Kassiert",
+    total_score_proj = "Gescored",
+    team_away_proj = "Kassiert",
+    diff_scored = "Gescored",
+    diff_scored_against = "Kassiert",
+  ) %>% 
+  gt_hulk_col_numeric(diff_scored, trim = T) %>% 
+  gt_hulk_col_numeric(diff_scored_against, reverse = T, trim = T)
+gtsave(gt_projscore, "output/ff21-reg/tab_projscore.html")
+```
+
+
