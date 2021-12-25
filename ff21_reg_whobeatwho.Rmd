@@ -1,0 +1,183 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r}
+library(tidyverse)
+library(hubnR)
+
+library(gt)
+library(gtExtras)
+
+theme_set(theme_hubnr())
+```
+
+```{r}
+ff21_reg <- read_csv("data/ff-2021-reg.csv")
+
+ff21_reg_matches <- ff21_reg %>% 
+  select(-(pos:year)) %>% 
+  distinct() %>% 
+  mutate(result = total_score > team_away_score,
+         result_proj = total_score_proj > team_away_proj,
+         result_int = ifelse(result,1,0))
+
+# List of managers
+managers <- ff21_reg_matches %>% distinct(team) %>% pull()
+```
+
+```{r}
+# Weekly scores to determine winners
+weekly_scores <- ff21_reg_matches %>% 
+  distinct(week,team, total_score, total_score_proj)
+```
+
+```{r}
+# Every possible matchup
+matchups_cross <- crossing(week = 1:14, home = managers, against = managers) %>% 
+  filter(home != against)
+
+
+# If you would play against that person every time
+ff21_allvsall <- matchups_cross %>% 
+  left_join(weekly_scores, by = c("week", "home" = "team")) %>% 
+  left_join(weekly_scores, by = c("week", "against" = "team"), suffix = c("_home", "_against")) %>% 
+  mutate(result = total_score_home > total_score_against,
+         result_proj = total_score_proj_home > total_score_proj_against,
+         result_int = ifelse(result,1,0))
+
+# Real Matchups that took place
+ff21_realmatchups <- matchups_cross %>% 
+  left_join(ff21_reg_matches, by = c("week", "home" = "team", "against" = "team_away")) %>% 
+  select(week, home, against, contains("result")) %>% 
+  replace_na(list(result_int = 0.5))
+```
+
+```{r}
+# Joining weekly and real data
+ff21_combined <- ff21_allvsall %>% 
+  select(week, home, against, contains("result")) %>% 
+  inner_join(ff21_realmatchups, by = c("week", "home", "against"), suffix = c("_all", "_real"))
+```
+
+```{r}
+# Function for creating our table
+create_tbl <- function(name) {
+  print(name)
+  ff21_combined %>% 
+    filter(home == name) %>% 
+    group_by(against) %>% 
+    summarise(win_all = sum(result_all),
+              loss_all = sum(!result_all),
+              wl_list_all = list(result_int_all),
+              win_real = sum(result_real, na.rm = T),
+              loss_real = sum(!result_real, na.rm = T),
+              wl_list_real = list(result_int_real)) %>% 
+    ungroup() %>% 
+    arrange(-win_all) %>% 
+    gt() %>% 
+    gt_plt_winloss(wl_list_all, max_wins = 14) %>% 
+    gt_plt_winloss(wl_list_real, max_wins = 14) %>% 
+    gt_theme_nytimes() %>% 
+    tab_header(md(str_glue("Die wahre Tabelle: <span style='color:#6A0F8E'>{name}</span>")),
+               subtitle = "Wie sieht es aus, wenn man jede Woche gegen eine Person spielen würde?") %>% 
+    tab_spanner(columns = 2:4, label ="Wöchentlich") %>% 
+    tab_spanner(columns = 5:7, label ="Tatsächlich") %>% 
+    cols_label(
+      against = "Gegner",
+      win_all = "W",
+      loss_all = "L",
+      wl_list_all = "Timeline",
+      win_real = "W",
+      loss_real = "L",
+      wl_list_real = "Timeline"
+    )
+  
+}
+```
+
+```{r}
+# We can now create the table calling the function
+create_tbl("Hubner")
+
+# Export for every Manager
+for (m in managers) {
+  create_tbl(m) %>% 
+    gtsave(paste0("output/ff21-reg/truetable/",m,".html"))
+}
+```
+
+
+```{r}
+# Considering Weekly Projections
+ff21_combined %>% 
+  mutate(result_int_all = ifelse(result_proj_all,1,0)) %>% 
+  filter(home == "Hubner") %>% 
+  group_by(against) %>% 
+  summarise(win_all = sum(result_proj_all),
+            loss_all = sum(!result_proj_all),
+            wl_list_all = list(result_int_all),
+            win_real = sum(result_real, na.rm = T),
+            loss_real = sum(!result_real, na.rm = T),
+            wl_list_real = list(result_int_real)) %>% 
+  ungroup() %>% 
+  arrange(-win_all) %>% 
+  gt() %>% 
+  gt_plt_winloss(wl_list_all, max_wins = 14) %>% 
+  gt_plt_winloss(wl_list_real, max_wins = 14) %>% 
+  gt_theme_espn() %>% 
+  tab_header("Wie gut kann man sich auf die wöchentlichen Projections verlassen?") %>% 
+  tab_spanner(columns = 2:4, label ="Projections") %>% 
+  tab_spanner(columns = 5:7, label ="Tatsächlich") %>% 
+  tab_source_note("Manager: Hubner") %>% 
+  cols_label(
+    against = "Gegner",
+    win_all = "W",
+    loss_all = "L",
+    wl_list_all = "Timeline",
+    win_real = "W",
+    loss_real = "L",
+    wl_list_real = "Timeline"
+  )
+  
+```
+
+
+```{r}
+ff21_allvsall %>% 
+  mutate(result_int = ifelse(result,1,0)) %>% 
+  filter(home == "Hubner") %>% 
+  group_by(against) %>% 
+  summarise(win = sum(result),
+            loss = sum(!result),
+            wl_list = list(result_int)) %>% 
+  gt() %>% 
+  gt_plt_winloss(wl_list, max_wins = 14)
+
+```
+
+```{r}
+ff21_realmatchups <- matchups_cross %>% 
+  left_join(ff21_reg_matches, by = c("week", "home" = "team", "against" = "team_away")) %>% 
+  select(week, home, against, contains("result")) %>% 
+  replace_na(list(result_int = 0.5))
+```
+
+
+```{r}
+ff21_realmatchups %>% 
+  filter(home == "Hubner") %>% 
+  group_by(against) %>% 
+  summarise(win = sum(result, na.rm = T),
+            loss = sum(!result, na.rm = T),
+            wl_list = list(result_int)) %>% 
+  gt() %>% 
+  gt_plt_winloss(wl_list, max_wins = 14)
+```
+
+
+

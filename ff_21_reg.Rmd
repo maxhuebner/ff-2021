@@ -17,6 +17,7 @@ theme_set(theme_hubnr())
 
 ```{r}
 ff21_reg <- read_csv("data/ff-2021-reg.csv") %>% 
+#ff21_reg <- read_csv("data/ff-2020-full_w_proj.csv") %>% 
   mutate(year = recode(year, "2020" = "2021"))
 
 ff21_reg_matches <- ff21_reg %>% 
@@ -62,6 +63,63 @@ gt_projscore <- ff21_reg_matches %>%
   gt_hulk_col_numeric(diff_scored, trim = T) %>% 
   gt_hulk_col_numeric(diff_scored_against, reverse = T, trim = T)
 gtsave(gt_projscore, "output/ff21-reg/tab_projscore.html")
+```
+
+```{r}
+ff21_score_ranks <- ff21_reg_matches %>% 
+  select(week, team, total_score) %>% 
+  group_by(team) %>% 
+  arrange(week) %>% 
+  mutate(pts_scored = cumsum(total_score)) %>% 
+  ungroup() %>% 
+  group_by(week) %>% 
+  mutate(score_rank = 11 - dense_rank(pts_scored)) %>% 
+  ungroup()
+
+final_ranks <- ff21_score_ranks %>% 
+  filter(week == max(week)) %>% 
+  select(team, final_rank = score_rank)
+  
+scores_joined <- ff21_score_ranks %>% 
+  left_join(final_ranks, by = "team")
+
+
+plot_scoredreg <- scores_joined %>% 
+  mutate(team = fct_reorder(team, final_rank)) %>% 
+  ggplot(aes(week, score_rank, color = team)) +
+  geom_step(size = 1.5) +
+  facet_wrap(~team, ncol = 5) +
+  scale_y_continuous(breaks = 1:10) + 
+  scale_x_continuous(breaks = 1:14) +
+  guides(color = "none") + 
+  labs(title = "Points Scored in der regular Season",
+       subtitle = "Rang 1 bedeutet, dass der Spieler bis dahin am meisten Punkte gescored hat, 10 am wengisten",
+       x = "Woche",
+       y = "Rang",
+       caption = "Fantasy Football Season 2021")
+
+save_std_png(plot_scoredreg, "output/ff21-reg/plot_scoreverlauf.png", width = 18, height = 10)
+```
+
+```{r}
+library(gganimate)
+
+ff21_score_ranks %>% 
+  ggplot(aes(pts_scored, team)) + 
+  geom_col() + 
+  transition_time(week)
+```
+
+
+```{r}
+ff21_reg_matches %>% 
+  mutate(below_100 = total_score < 100) %>% 
+  select(year:total_score_proj,below_100) %>% 
+  group_by(team) %>% 
+  summarise(below_100 = any(below_100))
+  
+ff21_reg_matches %>% 
+  filter(team == "Wolverine88") %>% pull(total_score) %>% summary()
 ```
 
 

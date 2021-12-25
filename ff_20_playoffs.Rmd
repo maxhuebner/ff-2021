@@ -1,0 +1,91 @@
+---
+title: "Playoffs Letztes Jahr"
+author: "Max Hübner"
+date: "12/19/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(hubnR)
+library(gt)
+library(gtExtras)
+
+theme_set(theme_hubnr())
+```
+
+```{r}
+ff20_reg <- read_csv("data/ff-2020-full_w_proj.csv") %>% 
+  filter(year == 2020, week < 14)
+
+ff20_reg_matches <- ff20_reg %>% 
+  distinct(year, week, team, total_score,
+           total_score_proj, team_away,
+           team_away_proj, team_away_score) %>% 
+  mutate(result = ifelse(total_score >= team_away_score, TRUE, FALSE),
+         result_proj = ifelse(total_score_proj >= team_away_proj, TRUE, FALSE))
+```
+
+```{r}
+playoffs <- c("Hubner", "TheRealBauer", "Speasy", "StumpfistTrumpf", "MarkusEXperte", "AllTimeReadyPat")
+```
+
+```{r}
+plot_p20 <- ff20_reg_matches %>%
+  filter(week > 13,
+         team %in% playoffs) %>% 
+  group_by(week) %>% 
+  select(-year, -result_proj) %>% 
+  mutate(result = ifelse(result, "Ja", "Nein")) %>% 
+  gt() %>% 
+  gt_theme_538() %>% 
+  cols_label(
+    total_score = "Punkte",
+    total_score_proj ="Projected",
+    team_away = "Gegner",
+    team_away_score = "Gegner Punkte",
+    team_away_proj = "Gegner Proj",
+    result = "Gewonnen?"
+  )
+
+gtsave(plot_p20,"output/temp/p20.html")
+
+```
+
+```{r}
+plot_reg20 <- ff20_reg_matches %>% 
+  group_by(year, team) %>% 
+  mutate(win = sum(result),
+         loss = sum(!result)) %>% 
+  group_by(year, team, win,loss) %>% 
+  summarise_if(is.numeric, sum) %>% 
+  ungroup() %>% 
+  select(-week, -year) %>% 
+  arrange(desc(total_score)) %>% 
+  relocate(team_away_score, .after=total_score) %>% 
+  mutate(diff_scored = total_score - total_score_proj,
+         diff_scored_against = team_away_score - team_away_proj) %>% 
+  gt() %>% 
+  gt_theme_espn() %>% 
+  tab_header("Recap Regular Season 2020",
+             subtitle = "Rot = Playoffs verpasst, Grün = First Round Bye") %>% 
+  tab_spanner("Record", columns = 2:3) %>% 
+  tab_spanner("Real", columns = 4:5) %>% 
+  tab_spanner("Projected", columns = 6:7) %>% 
+  tab_spanner("Differenz", columns = 8:9) %>% 
+  cols_label(
+    total_score = "Gescored",
+    team_away_score = "Kassiert",
+    total_score_proj = "Gescored",
+    team_away_proj = "Kassiert",
+    diff_scored = "Gescored",
+    diff_scored_against = "Kassiert",
+  ) %>% 
+  gt_highlight_rows(rows = c(6,8,9,10), columns = 1, fill = "#FF7F7F", font_weight = "normal") %>% 
+  gt_highlight_rows(rows = c(3,5), columns = 1, fill = "#90ee90", font_weight = "normal") %>% 
+  gt_hulk_col_numeric(diff_scored, trim = T) %>% 
+  gt_hulk_col_numeric(diff_scored_against, reverse = T, trim = T)
+  
+gtsave(plot_reg20,"output/temp/reg20.html")
+```
+

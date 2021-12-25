@@ -1,0 +1,134 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(hubnR)
+
+library(gt)
+library(gtExtras)
+
+theme_set(theme_hubnr())
+```
+
+```{r}
+pbp_21_raw <- read_rds("data/play_by_play_2021.rds") %>% 
+  mutate(fantasy_qb_player_name = 
+           ifelse(is.na(passer_player_name), NA_character_, passer_player_name)) %>% 
+  filter(week <= 14)
+
+# Show Colnames
+pbp_21_raw %>% colnames()
+```
+
+
+```{r}
+ff_21_reg <- read_csv("data/ff-2021-reg.csv") %>% 
+  filter(pos != "DEF", pos != "K", pos != "BN") %>% 
+  mutate(player = str_remove(player, " "))
+
+unique_players <- ff_21_reg %>% distinct(player) %>% pull()
+  
+pbp_ff21 <- pbp_21_raw %>% 
+  filter(fantasy_player_name %in% unique_players | 
+           fantasy_qb_player_name %in% unique_players)
+```
+
+
+```{r}
+pbp_ff21 %>% 
+  filter(passer_player_name == "B.Mayfield") %>% 
+  mutate(trailing = posteam_score < defteam_score) %>% 
+  filter(!trailing)
+  
+```
+
+
+```{r}
+pbp_trail <- pbp_21_raw %>% 
+  mutate(trailing = posteam_score < (defteam_score - 6),
+         passer_player_name = recode(passer_player_name, "Aa.Rodgers" = "A.Rodgers")) %>% 
+  filter(!is.na(passer_player_name),
+         passer_player_name %in% unique_players) %>% 
+  group_by(passer_player_name, trailing) %>% 
+  summarise(yards = sum(yards_gained),
+            attempts = sum(pass_attempt),
+            tds = sum(touchdown)) %>% 
+  mutate(total_yards = sum(yards),
+         total_tds = sum(tds),
+         total_attempts = sum(attempts)) %>% 
+  ungroup() %>% 
+  filter(total_attempts >= 250) %>% 
+  mutate(fpts = yards / 25 + tds * 4,
+         total_fpts = total_yards / 25 + total_tds * 4,
+         fpts_of_total = fpts / total_fpts)
+
+library(tidytext)
+
+top_10qb <- c("J.Allen", "J.Herbert", "T.Brady", "P.Mahomes", "J.Hurts", "L.Jackson", "A.Rodgers", "M.Stafford", "K.Cousins", "J.Burrow")
+
+plot_trail <- pbp_trail %>% 
+  group_by(trailing) %>% 
+  top_n(8, fpts_of_total) %>% 
+  ungroup() %>% 
+  mutate(trailing = ifelse(trailing, "When Behind By 7 Or More", "Ahead Or Trailing By <6"),
+         top_10 = ifelse(passer_player_name %in% top_10qb, "Yes", "No"),
+         passer_player_name = str_glue("{passer_player_name} ({attempts})"),
+         passer_player_name = reorder_within(passer_player_name, fpts_of_total, trailing),
+         ) %>% 
+  ggplot(aes(fpts_of_total, passer_player_name, fill = top_10)) +
+  geom_col() +
+  facet_wrap(~trailing, scales = "free_y") + 
+  scale_y_reordered() + 
+  labs(title = "Garbage Time anybody?",
+       fill = "Top 10 QB?",
+       y = NULL,
+       x = "% of Fantasy Points Scored") +
+  scale_fill_manual(values = c("#3d3540", "#00b159")) +
+  scale_x_continuous(labels = scales::percent)
+
+save_std_png(plot_trail, "output/ff-21-pbp/trailing_qb.png", width = 16, height = 10)
+```
+
+```{r}
+pbp_qtr <- pbp_21_raw %>% 
+  mutate(passer_player_name = recode(passer_player_name, "Aa.Rodgers" = "A.Rodgers")) %>% 
+  group_by(passer_player_name, qtr) %>% 
+  summarise(yards = sum(yards_gained),
+            attempts = sum(pass_attempt),
+            tds = sum(touchdown)) %>% 
+  mutate(total_yards = sum(yards),
+         total_tds = sum(tds),
+         total_attempts = sum(attempts)) %>% 
+  ungroup() %>% 
+  filter(total_attempts >= 250) %>% 
+  mutate(fpts = yards / 25 + tds * 4,
+         total_fpts = total_yards / 25 + total_tds * 4,
+         fpts_of_total = fpts / total_fpts)
+
+pbp_trail %>% 
+  filter(qtr <= 4) %>% 
+  group_by(qtr) %>% 
+  top_n(6, fpts_of_total) %>% 
+  ungroup() %>% 
+  mutate(qtr = paste("Quarter",qtr),
+         top_10 = ifelse(passer_player_name %in% top_10qb, "Yes", "No"),
+         passer_player_name = str_glue("{passer_player_name} ({attempts})"),
+         passer_player_name = reorder_within(passer_player_name, fpts_of_total, qtr),
+         ) %>% 
+  ggplot(aes(fpts_of_total, passer_player_name, fill = top_10)) +
+  geom_col() +
+  facet_wrap(~qtr, scales = "free_y") + 
+  scale_y_reordered() + 
+  labs(title = "Strongest Quarters?",
+       fill = "Top 10 QB?",
+       y = NULL,
+       x = "% of Fantasy Points Scored") +
+  scale_fill_manual(values = c("#3d3540", "#00b159")) +
+  scale_x_continuous(labels = scales::percent)
+```
+
