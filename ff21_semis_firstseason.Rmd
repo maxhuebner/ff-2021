@@ -1,0 +1,126 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(tidyverse)
+library(hubnR)
+
+library(gt)
+library(gtExtras)
+
+theme_set(theme_hubnr())
+```
+
+```{r}
+ff_matches21 <- read_csv("data/ff-2021-reg-matches.csv") %>% 
+  mutate(year = 2021) %>% 
+  relocate(year, .before = week)
+
+ff_matches <- read_csv("data/ff-history-2017-2021.csv") %>% 
+  distinct(year, week, team_manager, team_score, team_away_manager, team_away_score )
+```
+
+```{r}
+bauer <- ff_matches %>% 
+  mutate(result = team_score > team_away_score,
+         result_int = ifelse(result, 1, 0)) %>% 
+  filter(team_manager == "Bauer", year == 2017) %>% 
+  group_by(week < 14) %>% 
+  summarise(w = sum(result),
+            l = sum(!result),
+            wl = list(result_int),
+            year = first(year)) %>% 
+  rename("regular"=1) %>% 
+  mutate(name = "Bauer")
+
+ha <- ff_matches %>% 
+  mutate(result = team_score > team_away_score,
+         result_int = ifelse(result, 1, 0)) %>% 
+  filter(team_manager == "Ha", year == 2019) %>% 
+  group_by(week < 14) %>% 
+  summarise(w = sum(result),
+            l = sum(!result),
+            wl = list(result_int),
+            year = first(year)) %>% 
+  rename("regular"=1) %>% 
+  mutate(name = "Ha")
+
+rui <- ff_matches %>% 
+  mutate(result = team_score > team_away_score,
+         result_int = ifelse(result, 1, 0)) %>% 
+  filter(team_manager == "Patrick", year == 2017) %>% 
+  group_by(week < 14) %>% 
+  summarise(w = sum(result),
+            l = sum(!result),
+            wl = list(result_int),
+            year = first(year)) %>% 
+  rename("regular"=1) %>% 
+  mutate(name = "Rui")
+
+tib_play <- tribble(
+  ~regular,~w, ~l, ~wl,
+  FALSE, 1, 0, 1
+) %>% mutate(wl = list(wl))
+
+wolv <- ff_matches21 %>% 
+  mutate(result = total_score > team_away_score,
+         result_int = ifelse(result, 1, 0)) %>% 
+  filter(team == "Wolverine88", year == 2021) %>% 
+  group_by(week < 15) %>% 
+  summarise(w = sum(result),
+            l = sum(!result),
+            wl = list(result_int),
+            year = first(year)) %>% 
+  rename("regular"=1) %>% 
+  bind_rows(tib_play) %>% 
+  mutate(name = "Wolverine88", year = 2021)
+  
+  
+```
+
+```{r}
+bauer %>% 
+  bind_rows(list(ha, rui, wolv)) %>% 
+  mutate(regular = ifelse(regular, "Regular Season", "Playoffs")) %>% 
+  arrange(desc(regular)) %>% 
+  relocate(year, .before = w) %>% 
+  relocate(name, .before = w) %>%
+  group_by(regular) %>% 
+  gt() %>% 
+  gt_theme_538() %>% 
+  gt_plt_winloss(wl) %>% 
+  tab_header("Wie haben die Halbfinalisten in ihrer ersten Season performed?")
+```
+
+```{r}
+bauer_m <- ff_matches %>% 
+  filter(week >= 14) %>% 
+  filter(year == 2017, team_manager == "Bauer")
+
+rui_m <- ff_matches %>% 
+  filter(week >= 14) %>% 
+  filter(year == 2017, team_manager == "Patrick")
+
+ha_m <- ff_matches %>% 
+  filter(week >= 14) %>% 
+  filter(year == 2019, team_manager == "Ha")
+```
+
+```{r}
+bauer_m %>% 
+  bind_rows(list(rui_m, ha_m)) %>% 
+  group_by(team_manager) %>% 
+  gt() %>% 
+  gt_theme_538() %>% 
+  cols_label(team_away_manager = "Opponent",
+             team_away_score = "Opp Score",
+             team_score = "Score") %>% 
+  tab_header(md("Die Matchups der Playoffteilnehmer  
+                in ihrer ersten Season")) %>% 
+  opt_align_table_header(align = "center")
+```
+

@@ -1,0 +1,166 @@
+---
+title: "Untitled"
+author: "Max Hübner"
+date: "12/26/2021"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(hubnR)
+
+library(gt)
+library(gtExtras)
+
+theme_set(theme_hubnr())
+```
+
+```{r}
+ff_matches21 <- read_csv("data/ff-2021-reg-matches.csv") %>% 
+  mutate(year = 2021) %>% 
+  relocate(year, .before = week)
+
+ff_matches <- read_csv("data/ff-history-2017-2021.csv") %>% 
+  distinct(year, week, team_manager, team_score, team_away_manager, team_away_score ) %>% 
+  select(year, week, team = team_manager, total_score = team_score, team_away = team_away_manager, team_away_score)
+
+ff_matches_combined <- ff_matches %>%
+  bind_rows(ff_matches21) %>% 
+  mutate(result = total_score > team_away_score,
+         result_int = ifelse(result,1,0)) %>% 
+  mutate(team = recode(team,
+                       "Tobsenheimi" = "Blitzkoerper85",
+                       "Markus" = "MarkusEXperte",
+                       "Bauer" = "TheRealBauer",
+                       "Patrick" = "AllTimeReadyPat",
+                       "Marc" = "MKx",
+                       "Ha" = "Hammichan",
+                       "Stumpf" = "StumpfistTrumpf"))
+
+managers <- ff21_reg_matches %>% distinct(team) %>% pull()
+```
+
+```{r}
+# Offtopic: What are the most scored points in losses?
+ff_matches_combined %>% 
+  mutate(result = ifelse(result, "Gewonnen", "Verloren"),
+         diff = total_score - team_away_score) %>% 
+  group_by(result) %>% 
+  arrange(-total_score) %>% 
+  top_n(8, total_score) %>% 
+  select(year:team_away_score, result, diff) %>% 
+  gt() %>% 
+  gt_theme_espn() %>% 
+  cols_label(
+    total_score = md("Score"),
+    team_away = "Opponent",
+    team_away_score = "Opp. Score"
+  ) %>% 
+  tab_header(md("**Bestleistungen in <span style='color:#50C878'>Siegen</span> und <span style='color:#BE1F35'>Niederlagen</span>**"),
+             subtitle = "2017 - 2021 (only regular season)")
+```
+
+```{r}
+ff_median <- ff_matches_combined %>% 
+  filter(between(year,2017,2020) & week <= 13 |
+           year == 2021 & week <= 14) %>%
+  group_by(year, week) %>% 
+  mutate(median_score = median(total_score),
+         median_result= total_score > median_score,
+         median_int = ifelse(median_result, 1, 0)) %>% 
+  group_by(year, team) %>% 
+  summarise(win_real = sum(result, na.rm = T),
+            loss_real = sum(!result, na.rm = T),
+            wl_list_real = list(result_int),
+            win_median = sum(median_result),
+            loss_median = sum(!median_result),
+            wl_list_median = list(median_int)) %>% 
+  mutate(w = win_median+win_real,
+         l = loss_median+loss_real,
+         pct = w / (w+l),
+         pct_real = win_real / (win_real+loss_real),
+         pct_median = win_median / (win_median+loss_median)) %>% 
+  arrange(year, desc(pct)) %>% 
+  relocate(pct_real, .after = wl_list_real) %>% 
+  relocate(pct_median, .after = wl_list_median)
+```
+
+```{r}
+ff_median %>% 
+  gt(rowname_col = "team") %>% 
+  gt_plt_winloss(wl_list_median) %>% 
+  gt_plt_winloss(wl_list_real) %>% 
+  gt_theme_espn() %>% 
+  cols_label(
+    win_real = "W",
+    win_median = "W",
+    loss_real = "L",
+    loss_median = "L",
+    wl_list_real = "Timeline",
+    wl_list_median = "Timeline",
+    pct_real = "% Win",
+    pct_median = "% Win",
+    pct = "% Win"
+  ) %>% 
+  fmt_percent(columns = c(pct, pct_real, pct_median)) %>% 
+  cols_align(align = "left", columns = contains("wl")) %>% 
+  tab_spanner(columns = 3:6, label = "Real") %>% 
+  tab_spanner(columns = 7:10, label = "Median") %>% 
+  tab_spanner(columns = 11:13, label = "Combined") %>% 
+  tab_header("Was würde eine zusätzliches Spiel gegen den Wochenmedian bedeuten?",
+             subtitle = "Man kann ungefähr davon ausgehen, dass die ersten sechs Plätze in die Playoffs kommen") %>% 
+  tab_stubhead("Manager") %>% 
+  tab_options(stub.text_transform = "capitalize")
+```
+
+```{r}
+ff_median_sumarrized <- ff_median %>% 
+  group_by(team) %>% 
+  summarise(carrer_start = min(year),
+            carrer_end = max(year),
+            win_real = sum(win_real),
+            loss_real = sum(loss_real),
+            win_median = sum(win_median),
+            loss_median = sum(loss_median),
+            ) %>% 
+  mutate(w = win_median+win_real,
+         l = loss_median+loss_real,
+         pct = w / (w+l),
+         pct_real = win_real / (win_real+loss_real),
+         pct_median = win_median / (win_median+loss_median)) %>% 
+  arrange(desc(pct)) %>% 
+  relocate(pct_real, .after = loss_real) %>% 
+  relocate(pct_median, .after = loss_median)
+```
+
+```{r}
+ff_median_sumarrized %>% 
+  mutate(titles = ifelse(team %in% c("Blitzkoerper85", "StumpfistTrumpf", "Hubner", "AllTimeReadyPat"),
+                         1, 0)) %>% 
+  relocate(titles, .after = carrer_end) %>% 
+  filter(team %in% managers) %>% 
+  gt(rowname_col = "team") %>% 
+  gt_theme_espn() %>% 
+  cols_label(
+    win_real = "W",
+    win_median = "W",
+    loss_real = "L",
+    loss_median = "L",
+    pct_real = "% Win",
+    pct_median = "% Win",
+    pct = "% Win",
+    carrer_start = "debut",
+    carrer_end = "last"
+  ) %>% 
+  fmt_percent(columns = contains("pct")) %>% 
+  tab_spanner(columns = 2:4, label = "Experience") %>% 
+  tab_spanner(columns = 5:7, label = "Real") %>% 
+  tab_spanner(columns = 8:10, label = "Median") %>% 
+  tab_spanner(columns = 11:13, label = "Combined") %>% 
+  tab_header("All-Time Record wenn zusätzlich gegen den Wochenmedian gespielt wird") %>% 
+  tab_stubhead("Manager") %>% 
+  tab_options(stub.text_transform = "capitalize")
+  
+```
+
+
