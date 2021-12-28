@@ -1,0 +1,83 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(tidyverse)
+library(hubnR)
+
+library(gt)
+library(gtExtras)
+
+theme_set(theme_hubnr())
+```
+
+```{r}
+ff_matches <- read_csv("data/ff-history-2017-2021.csv") %>% 
+  distinct(year, week, team_manager, team_score, team_away_manager, team_away_score ) %>% 
+  select(year, week, team = team_manager, total_score = team_score, team_away = team_away_manager, team_away_score) %>% 
+  mutate(result = total_score > team_away_score,
+         result_int = ifelse(result,1,0))
+
+ff21_reg <- read_csv("data/ff-2021-reg.csv")
+
+ff21_reg_matches <- ff21_reg %>% 
+  select(-(pos:year)) %>% 
+  distinct() %>% 
+  mutate(year = 2021,
+         result = total_score > team_away_score,
+         result_proj = total_score_proj > team_away_proj,
+         result_int = ifelse(result,1,0)) %>% 
+  relocate(year, .before = week)
+
+# List of managers
+managers <- ff21_reg_matches %>% distinct(team) %>% pull()
+```
+
+```{r}
+ff_scoredwins <- ff_matches %>% 
+  bind_rows(ff21_reg_matches) %>% 
+  group_by(year, week) %>%
+  mutate(rank = n() + 1 - dense_rank(total_score)) %>% 
+  ungroup() %>% 
+  group_by(year, rank) %>% 
+  summarise(w = sum(result),
+            l = sum(!result),
+            pct = w / (w+l)) %>% 
+  ungroup() 
+```
+
+```{r}
+ff_scoredwins %>% 
+  group_by(year) %>% 
+  gt() %>% 
+  gt_theme_espn()
+
+ff_matches %>% 
+  bind_rows(ff21_reg_matches) %>% 
+  group_by(year, week) %>%
+  mutate(rank = n() + 1 - dense_rank(total_score)) %>% 
+  ungroup() %>% 
+  filter(rank == 8, year == 2021) %>% View()
+
+ff_scoredwins %>% 
+  pivot_wider(names_from = year, values_from = pct, id_cols = rank) %>% 
+  gt() %>% 
+  gt_theme_nytimes() %>% 
+  fmt_percent(columns = 2:6) %>% 
+  tab_header("Wie oft reicht es zum Sieg mit den x meisten Punkten?") %>% 
+  gt_highlight_rows(columns = 6, rows = 3, fill = "#E24666") %>% 
+  gt_highlight_rows(columns = 2, rows = 2, fill = "#E24666", alpha = .3) %>% 
+  gt_highlight_rows(columns = 2, rows = 6, fill = "#E24666", alpha = .3) %>% 
+  tab_footnote(
+    footnote = "In dieser Season gab es nur 8 Manager",
+    locations = cells_body(columns = 2, rows = c(10,9))
+  )
+```
+
+
+
+
