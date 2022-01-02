@@ -162,6 +162,8 @@ gtsave(gt_final_17, "output/ff21-final/gt_final_17.html")
 gtsave(gt_final_18, "output/ff21-final/gt_final_18.html")
 gtsave(gt_final_19, "output/ff21-final/gt_final_19.html")
 gtsave(gt_final_20, "output/ff21-final/gt_final_20.html")
+
+gtsave_extra(gt_final_17, "output/ff21-final/test.png", zoom = 4)
 ```
 
 ### Die Season der aktuellen Finalisten
