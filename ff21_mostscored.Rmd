@@ -1,0 +1,77 @@
+---
+title: "Untitled"
+author: "Max Hübner"
+date: "12/28/2021"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(hubnR)
+
+library(gt)
+library(gtExtras)
+
+theme_set(theme_hubnr())
+```
+
+```{r}
+mostscored <- read_csv("data/ff-2021-reg.csv") %>%
+  filter(pos != "BN") %>% 
+  filter(!(pos == "WR" & player == "D. Hopkins")) %>% 
+  group_by(player) %>% 
+  summarise(points = sum(points), games = n(),
+            pos = pos, team = team) %>% 
+  ungroup() %>% 
+  filter(!pos %in% c("BN", "FLX")) %>% 
+  arrange(-points) %>% 
+  distinct()
+```
+
+```{r}
+library(tidytext)
+
+mostscored %>%
+  group_by(pos) %>% 
+  top_n(6, points) %>% 
+  mutate(player = reorder_within(player, points, pos)) %>% 
+  ggplot(aes(points, player, fill = pos)) + 
+  geom_col() +
+  facet_wrap(~pos, scales = "free_y") +
+  scale_y_reordered() +
+  scale_fill_manual(values = c("#673AB7", "#757575", "#E51A1A", "#00C853", "#FFC107", "#2196F3")) +
+  guides(fill = "none")
+```
+
+```{r}
+mostscored %>% 
+  head(15) %>% 
+  ggplot(aes(points, player, fill = player)) + 
+  geom_col() +
+  scale_fill_hubnr(palette = "mixed")
+```
+
+
+```{r}
+mostscored %>% 
+  filter(games <= 14) %>% 
+  group_by(pos) %>% 
+  top_n(3, points) %>% 
+  ungroup() %>% 
+  group_by(pos, player, points, games) %>% 
+  mutate(team = list(team)) %>% 
+  ungroup() %>% 
+  distinct() %>% 
+  relocate(pos, .before = player) %>% 
+  gt() %>% 
+  gt_theme_espn() %>% 
+  tab_style(style = cell_text(color = "#E51A1A"), locations = cells_body(columns = pos, rows=str_detect(pos,"QB"))) %>% 
+  tab_style(style = cell_text(color = "#00C853"), locations = cells_body(columns = pos, rows=str_detect(pos,"RB"))) %>% 
+  tab_style(style = cell_text(color = "#2196F3"), locations = cells_body(columns = pos, rows=str_detect(pos,"WR"))) %>% 
+  tab_style(style = cell_text(color = "#673AB7"), locations = cells_body(columns = pos, rows=str_detect(pos,"DEF"))) %>%
+  tab_style(style = cell_text(color = "#757575"), locations = cells_body(columns = pos, rows=str_detect(pos,"K"))) %>%
+  tab_style(style = cell_text(color = "#FFC107"), locations = cells_body(columns = pos, rows=str_detect(pos,"TE"))) %>%
+  tab_header("Wer hat die meisten Punkte aufs Board gepackt?",
+             subtitle = "Top 3 pro position, gezählt werden nur die Punkte im Lineup")
+```
+

@@ -39,6 +39,8 @@ managers <- ff21_reg_matches %>% distinct(team) %>% pull()
 
 ```{r}
 ff_scoredwins <- ff_matches %>% 
+  filter(between(year,2017,2020) & week <= 13 |
+           year == 2021 & week <= 14) %>%
   bind_rows(ff21_reg_matches) %>% 
   group_by(year, week) %>%
   mutate(rank = n() + 1 - dense_rank(total_score)) %>% 
@@ -61,7 +63,7 @@ ff_matches %>%
   group_by(year, week) %>%
   mutate(rank = n() + 1 - dense_rank(total_score)) %>% 
   ungroup() %>% 
-  filter(rank == 8, year == 2021) %>% View()
+  filter(rank == 9, year == 2021) %>% View()
 
 ff_scoredwins %>% 
   pivot_wider(names_from = year, values_from = pct, id_cols = rank) %>% 
@@ -70,8 +72,18 @@ ff_scoredwins %>%
   fmt_percent(columns = 2:6) %>% 
   tab_header("Wie oft reicht es zum Sieg mit den x meisten Punkten?") %>% 
   gt_highlight_rows(columns = 6, rows = 3, fill = "#E24666") %>% 
-  gt_highlight_rows(columns = 2, rows = 2, fill = "#E24666", alpha = .3) %>% 
-  gt_highlight_rows(columns = 2, rows = 6, fill = "#E24666", alpha = .3) %>% 
+  tab_footnote(
+    footnote = "In dieser Season gab es nur 8 Manager",
+    locations = cells_body(columns = 2, rows = c(10,9))
+  )
+
+ff_scoredwins %>% 
+  pivot_wider(names_from = year, values_from = w, id_cols = rank) %>% 
+  gt() %>%
+  gt_theme_nytimes() %>% 
+  #fmt_percent(columns = 2:6) %>% 
+  tab_header("Wie oft reicht es zum Sieg mit den x meisten Punkten?") %>% 
+  gt_highlight_rows(columns = 6, rows = 3, fill = "#E24666") %>% 
   tab_footnote(
     footnote = "In dieser Season gab es nur 8 Manager",
     locations = cells_body(columns = 2, rows = c(10,9))

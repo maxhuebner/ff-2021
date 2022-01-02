@@ -1,0 +1,213 @@
+---
+title: "Template Title"
+author: 
+  name: "Max Hübner"
+  url: https://maxhuebner.github.io/
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: yeti
+    toc: true
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(scales)
+library(hubnR)
+
+library(gt)
+library(gtExtras)
+
+theme_set(theme_hubnr())
+```
+
+```{r}
+ff_history <- read_csv("data/ff-history-2017-2021.csv") %>% 
+  select(-team, - team_away) %>% 
+  rename(team = team_manager, total_score = team_score,
+         team_away = team_away_manager)
+
+ff_matches <- read_csv("data/ff-history-2017-2021.csv") %>% 
+  distinct(year, week, team_manager, team_score, team_away_manager, team_away_score ) %>% 
+  select(year, week, team = team_manager, total_score = team_score,
+         team_away = team_away_manager, team_away_score) %>% 
+  mutate(result = total_score > team_away_score,
+         result_int = ifelse(result,1,0))
+```
+
+Ein Blick auf die Championship Weeks der vergangenen Seasons:
+
+```{r}
+ff_matches %>% 
+  group_by(year) %>% 
+  filter(week == max(week)) %>% 
+  mutate(finalWinner = case_when(
+    year == 2017 ~ "Patrick",
+    year == 2018 ~ "Tobsenheimi",
+    year == 2019 ~ "Hubner",
+    TRUE ~ "Stumpf"
+  )) %>% 
+  filter(team == finalWinner) %>% 
+  select(-contains("result"), -finalWinner) %>% 
+  ungroup() %>% 
+  gt() %>% 
+  gt_theme_nytimes() %>% 
+  cols_label(
+    year = "Jahr",
+    week = "Woche",
+    total_score = "Score",
+    team_away = "Runner Up",
+    team_away_score = "Runner Up Score"
+  ) %>% 
+  tab_header("Die bisherigen Championship Weeks unserer Geschichte") %>% 
+  gt_highlight_cols(columns = 3, fill = "#9ADBBA")
+```
+
+### Games Table Funktion
+
+Im folgenden wird eine Funktion gebastelt, welche mit den nötigen Parametern das Matchup tabellarisch darstellt.  
+Beginnen wir mit einem einzelnen Matchup:  
+
+```{r}
+team_1 <- "Patrick"
+team_2 <- "Bauer"
+cyear <- 2017
+cweek <- 16
+
+scores <- ff_history %>% 
+  filter(year == cyear, week == cweek, team %in% c(team_1, team_2)) %>% 
+  distinct(team, total_score)
+
+score_1 <- scores %>% filter(team == team_1) %>% pull(total_score)
+score_2 <- scores %>% filter(team == team_2) %>% pull(total_score)
+spanner_1 <- str_glue("{team_1} ({score_1} Punkte)")
+spanner_2 <- str_glue("{team_2} ({score_2} Punkte)")
+
+title <- md(str_glue("Championship Game {cyear}: {team_1} vs. {team_2}"))
+
+data <- ff_history %>% 
+  filter(year == cyear, week == cweek, team %in% c(team_1, team_2)) %>% 
+  select(pos, player, points, team) %>% 
+  pivot_wider(values_from = c("player", "points"),names_from = "team", id_cols = "pos", values_fn = list) %>% 
+  unnest(cols = c(player_Patrick, player_Bauer, points_Patrick, points_Bauer)) %>% 
+  relocate(3, .after = 4) %>% 
+  rename(player_1=2, points_1 = 3, player_2 = 4, points_2 = 5) %>% 
+  mutate(diff = points_1 - points_2)
+
+data %>% 
+  mutate(type = ifelse(pos == "BN", "Bank", "Aktiv")) %>% 
+  group_by(type) %>% 
+  gt() %>% 
+  gt_theme_espn() %>% 
+  cols_label(
+    player_1 = "Spieler",
+    player_2 = "Spieler",
+    points_1 = "Punkte",
+    points_2 = "Punkte"
+  ) %>% 
+  tab_spanner(columns = 2:3, label = spanner_1) %>% 
+  tab_spanner(columns = 4:5, label = spanner_2) %>% 
+  gt_hulk_col_numeric(diff) %>% 
+  tab_header(title)
+```
+
+Umbauen in eine Funktion:  
+```{r}
+gt_getroster <- function(team_1, team_2, cyear, cweek) {
+  scores <- ff_history %>% 
+  filter(year == cyear, week == cweek, team %in% c(team_1, team_2)) %>% 
+  distinct(team, total_score)
+
+score_1 <- scores %>% filter(team == team_1) %>% pull(total_score)
+score_2 <- scores %>% filter(team == team_2) %>% pull(total_score)
+spanner_1 <- str_glue("{team_1} ({score_1} Punkte)")
+spanner_2 <- str_glue("{team_2} ({score_2} Punkte)")
+
+data <- ff_history %>% 
+  filter(year == cyear, week == cweek, team %in% c(team_1, team_2)) %>% 
+  select(pos, player, points, team) %>% 
+  pivot_wider(values_from = c("player", "points"),names_from = "team", id_cols = "pos", values_fn = list) %>% 
+  relocate(3, .after = 4) %>% 
+  rename(player_1=2, points_1 = 3, player_2 = 4, points_2 = 5) %>% 
+  unnest(cols = c(player_1, player_2, points_1, points_2)) %>% 
+  mutate(diff = points_1 - points_2)
+
+data %>% 
+  mutate(type = ifelse(pos == "BN", "Bank", "Aktiv")) %>% 
+  group_by(type) %>% 
+  gt() %>% 
+  gt_theme_espn() %>% 
+  cols_label(
+    player_1 = "Spieler",
+    player_2 = "Spieler",
+    points_1 = "Punkte",
+    points_2 = "Punkte"
+  ) %>% 
+  tab_spanner(columns = 2:3, label = spanner_1) %>% 
+  tab_spanner(columns = 4:5, label = spanner_2) %>% 
+  gt_hulk_col_numeric(diff) %>% 
+  gt_hulk_col_numeric(columns = contains("point"))
+}
+```
+
+Aufrufen für die Championshipweeks:  
+
+```{r}
+gt_final_17 <- gt_getroster("Patrick", "Bauer", 2017, 16) %>% tab_header("Championship Game 2017: Patrick vs. Bauer")
+gt_final_18 <- gt_getroster("Tobsenheimi", "Hubner", 2018, 16) %>% tab_header("Championship Game 2018: Heim vs. Hubner")
+gt_final_19 <- gt_getroster("Hubner", "Patrick", 2019, 16) %>% tab_header("Championship Game 2019: Hubner vs. Patrick")
+gt_final_20 <- gt_getroster("Stumpf", "Speasy", 2020, 16) %>% tab_header("Championship Game 2020: Stumpf vs. Speasy")
+
+gtsave(gt_final_17, "output/ff21-final/gt_final_17.html")
+gtsave(gt_final_18, "output/ff21-final/gt_final_18.html")
+gtsave(gt_final_19, "output/ff21-final/gt_final_19.html")
+gtsave(gt_final_20, "output/ff21-final/gt_final_20.html")
+```
+
+### Die Season der aktuellen Finalisten
+
+Hierzu brauchen wir aktuelle Daten:
+```{r}
+ff_21 <- read_csv("data/ff21-w16.csv") %>% 
+  select(-(pos:year)) %>% 
+  distinct() %>% 
+  mutate(result = total_score > team_away_score,
+         result_proj = total_score_proj > team_away_proj,
+         result_int = ifelse(result,1,0))
+```
+
+Darstellung der bisherigen Season:
+```{r}
+ff_21 %>% 
+  filter(team %in% c("Wolverine88", "TheRealBauer")) %>% 
+  mutate(result = ifelse(result, 
+                         "<span style='color:#50C878'>W</span>",
+                         "<span style='color:#BE1F35'>L</span>")) %>% 
+  select(-contains("result_"), -contains("proj")) %>% 
+  pivot_wider(names_from = "team", id_cols = "week", values_from = c("total_score", "team_away", "team_away_score", "result")) %>% 
+  relocate(contains("Bauer"), .after = week) %>% 
+  mutate(type = ifelse(week <= 14, "Regular Season", "Playoffs")) %>% 
+  group_by(type) %>% 
+  gt() %>% 
+  gt_theme_espn() %>% 
+  cols_label(
+    week = "Woche",
+    total_score_TheRealBauer = "Score",
+    team_away_TheRealBauer = "Gegner",
+    team_away_score_TheRealBauer = "Gegner Score",
+    result_TheRealBauer = "Ergebnis",
+    total_score_Wolverine88 = "Score",
+    team_away_Wolverine88 = "Gegner",
+    team_away_score_Wolverine88 = "Gegner Score",
+    result_Wolverine88 = "Ergebnis"
+  ) %>% 
+  fmt_markdown(columns = contains("result")) %>% 
+  tab_spanner(columns = 2:5, label = "TheRealBauer") %>% 
+  tab_spanner(columns = 6:9, label = "Wolverine88") %>% 
+  gt_highlight_rows(rows = 10, fill = "#7BC2BC") %>% 
+  tab_header(md("**Die Season der Finalisten 2021 zusammengefasst**")) %>% 
+  opt_align_table_header(align = "center")
+```
+
+
+
