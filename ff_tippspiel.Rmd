@@ -1,0 +1,168 @@
+---
+title: "Template Title"
+author: 
+  name: "Max Hübner"
+  url: https://maxhuebner.github.io/
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: yeti
+    toc: true
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(scales)
+library(hubnR)
+
+library(gt)
+library(gtExtras)
+
+theme_set(theme_hubnr())
+```
+
+```{r}
+bauer <- read_csv("data/Tippspiel/nfl-2021-tippspiel_bauer.csv")
+
+hubner <- read_csv("data/Tippspiel/nfl-2021-tippspiel_hubner.csv")
+```
+
+
+```{r}
+nfl_21 <- read_csv("data/Tippspiel/nfl-2021-results.csv")
+
+nfl_wins_21 <- nfl_21 %>% 
+  mutate(winner_team = ifelse(winner == 1, home, away)) %>% 
+  group_by(winner_team) %>% 
+  summarise(w = n(),
+            l = 17 - n()) %>% 
+  arrange(-w)
+
+```
+
+```{r}
+tm <- "CLE"
+nfl_21 %>% 
+  filter(home == tm | away == tm) %>% 
+  arrange(week) %>% 
+  mutate(winner_team = ifelse(winner == 1, home, away),
+         result = ifelse(winner_team == tm, "WIN", "LOSS"))
+```
+
+```{r}
+bauer_result <- bauer %>% 
+  left_join(nfl_21, by = c("week", "home", "away"), suffix = c("_guess", "_real")) %>% 
+  mutate(result = winner_guess == winner_real,
+         tip = "Bauer")
+
+hubner_result <- hubner %>% 
+  left_join(nfl_21, by = c("week", "home", "away"), suffix = c("_guess", "_real")) %>% 
+  mutate(result = winner_guess == winner_real,
+         tip = "Hubner")
+```
+
+```{r}
+year_sum <- hubner_result %>% 
+  bind_rows(bauer_result) %>% 
+  group_by(tip) %>% 
+  summarise(n = n(),
+            right = sum(result),
+            wrong = sum(!result),
+            pct = right/n) %>% 
+  pivot_wider(id_cols = c("n"), names_from = "tip", values_from = "pct") %>% 
+  mutate(week = NA_integer_)
+
+gt_tippwin <- hubner_result %>% 
+  bind_rows(bauer_result) %>% 
+  group_by(tip, week) %>% 
+  summarise(n = n(),
+            right = sum(result),
+            wrong = sum(!result),
+            pct = right/n) %>% 
+  ungroup() %>% 
+  pivot_wider(id_cols = c("week", "n"), names_from = "tip", values_from = "pct") %>% 
+  bind_rows(year_sum) %>% 
+  mutate("Gewinner" = case_when(
+    Bauer > Hubner ~ "Bauer",
+    Hubner > Bauer ~ "Hubner",
+    TRUE ~ "TIE"
+  )) %>% 
+  gt() %>% 
+  cols_label(
+    week = "Woche",
+    n = "#Spiele"
+  ) %>% 
+  gt_theme_espn() %>% 
+  fmt_percent(columns = c("Bauer", "Hubner"), decimals = 1) %>% 
+  tab_header("Tippspiel NFL 2022") %>% 
+  tab_row_group(label = html("Resultat <span style='color:#B53389'>Jahr</span>"), rows = is.na(week)) %>% 
+  tab_row_group(label = html("Resultat <span style='color:#B53389'>Wochen</span>"), rows = week != 0) %>% 
+  gt_highlight_rows(columns = 5, rows = 19, fill = "#00A86B", alpha = .5)
+
+gtsave_extra(gt_tippwin, "output/tip/tipwin.png", expand = 0, zoom = 5)
+```
+
+```{r}
+team_df <- readRDS(url("https://github.com/nflverse/nflfastR-data/raw/master/teams_colors_logos.rds")) %>% 
+  select(team_abbr, team_conf, team_division, team_wordmark) %>% 
+  mutate(team_abbr = recode(team_abbr, "WAS" = "WSH"))
+
+calc_wins <- . %>% 
+  mutate(winner_team = ifelse(winner == 1, home, away)) %>% 
+  group_by(winner_team) %>% 
+  summarise(w = n(),
+            l = 17 - n()) %>% 
+  arrange(-w) %>% 
+  left_join(nfl_wins_21, by = "winner_team", suffix = c("_guess", "_real")) %>% 
+  mutate(win_diff = w_real - w_guess) %>% 
+  left_join(team_df, by = c("winner_team" = "team_abbr"))
+```
+
+
+```{r}
+win_tbl <- . %>%
+  arrange(team_division, desc(w_guess)) %>% 
+  select(team_wordmark, w_guess, l_guess, w_real,l_real, win_diff, team_division) %>% 
+  gt(groupname_col = "team_division") %>% 
+  gt_img_rows(team_wordmark) %>% 
+  gt_theme_espn() %>% 
+  cols_label(
+    team_wordmark = "",
+    w_guess = "W",
+    l_guess = "L",
+    l_real = "L",
+    w_real = "W",
+    win_diff = "Diff"
+  ) %>% 
+  tab_spanner(columns = 2:3, label = "Getippt") %>% 
+  tab_spanner(columns = 4:5, label = "Ergebnis") %>% 
+  gt_hulk_col_numeric(win_diff, trim = T)
+```
+
+```{r}
+gt_1 <- hubner %>% 
+  calc_wins() %>% 
+  win_tbl() %>% 
+  tab_header("Tippspiel NFL 2022 - Hubner")
+
+gtsave_extra(gt_1, "output/tip/hubner.png", expand = 0, zoom = 6)
+gt_1
+
+gt_2 <- bauer %>% 
+  calc_wins() %>% 
+  win_tbl() %>% 
+  tab_header("Tippspiel NFL 2022 - Bauer")
+
+gtsave_extra(gt_2, "output/tip/bauer.png", expand = 0, zoom = 6)
+gt_2
+```
+
+```{r}
+hubner %>% calc_wins() %>% mutate(tip = "Hubner") %>% 
+  bind_rows(bauer %>% calc_wins() %>% mutate(tip = "Bauer")) %>% 
+  group_by(tip) %>% 
+  summarise(diff = sum(abs(win_diff)))
+
+```
+
+

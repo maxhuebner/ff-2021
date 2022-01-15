@@ -1,5 +1,5 @@
 ---
-title: "Template Title"
+title: "Championship Game 2021"
 author: 
   name: "Max Hübner"
   url: https://maxhuebner.github.io/
@@ -10,7 +10,9 @@ output:
     toc: true
 ---
 
-```{r setup, include=FALSE}
+## Libraries and Data
+
+```{r setup, message = FALSE}
 library(tidyverse)
 library(scales)
 library(hubnR)
@@ -21,7 +23,7 @@ library(gtExtras)
 theme_set(theme_hubnr())
 ```
 
-```{r}
+```{r, message = FALSE}
 ff_history <- read_csv("data/ff-history-2017-2021.csv") %>% 
   select(-team, - team_away) %>% 
   rename(team = team_manager, total_score = team_score,
@@ -34,6 +36,10 @@ ff_matches <- read_csv("data/ff-history-2017-2021.csv") %>%
   mutate(result = total_score > team_away_score,
          result_int = ifelse(result,1,0))
 ```
+
+## Analysis
+
+### Championship Games der letzten Jahre
 
 Ein Blick auf die Championship Weeks der vergangenen Seasons:
 
@@ -163,13 +169,18 @@ gtsave(gt_final_18, "output/ff21-final/gt_final_18.html")
 gtsave(gt_final_19, "output/ff21-final/gt_final_19.html")
 gtsave(gt_final_20, "output/ff21-final/gt_final_20.html")
 
-gtsave_extra(gt_final_17, "output/ff21-final/test.png", zoom = 4)
+gt_final_17
+gt_final_18
+gt_final_19
+gt_final_20
+
+#gtsave_extra(gt_final_17, "output/ff21-final/test.png", zoom = 4)
 ```
 
 ### Die Season der aktuellen Finalisten
 
 Hierzu brauchen wir aktuelle Daten:
-```{r}
+```{r, message=FALSE}
 ff_21 <- read_csv("data/ff21-w16.csv") %>% 
   select(-(pos:year)) %>% 
   distinct() %>% 
